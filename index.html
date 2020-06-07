@@ -10,7 +10,7 @@
         }
 
         input {
-            float: right;
+            float: center;
             margin-left: 5px;
             margin-right: 5px;
             width: 60px;
@@ -36,47 +36,55 @@
     <canvas style="float:left; margin: 10px;" id="mainCanvas" width="1000" height="600"></canvas>
     <div style="float:left;" height="600">
         <div class="box">
-            <span>Source Frequency: </span>
-            <input type="number" class="wide" id="freqS" min="1" placeholder="Hz"><br><br>
+            <form id="paramsForm" onsumbit="alert('whee'); return false">
+                <span>Source Frequency: </span>
+                <input type="number" class="wide" id="freqS" min="1" placeholder="Hz" required><br><br>
 
-            <span>Source Power: </span>
-            <input type="number" class="wide" id="powerS" min="1" placeholder="W"><br><br>
+                <span>Source Power: </span>
+                <input type="number" class="wide" id="powerS" min="1" placeholder="W" required><br><br>
 
-            <span>Source Position: </span>
-            <input type="number" id="xS" placeholder="x m">
-            <input type="number" id="yS" placeholder="y m"><br><br>
+                <span>Source Position: </span>
+                <input type="number" id="xS" step="any" placeholder="x m" required>
+                <input type="number" id="yS" step="any" placeholder="y m" required><br><br>
 
-            <span>Source Velocity: </span>
-            <input type="number" id="vxS" placeholder="x m/s">
-            <input type="number" id="vyS" placeholder="y m/s"><br><br>
+                <span>Source Velocity: </span>
+                <input type="number" id="vxS" step="any" placeholder="x m/s" required>
+                <input type="number" id="vyS" step="any" placeholder="y m/s" required><br><br>
 
-            <span>Observer Position: </span>
-            <input type="number" id="xO" placeholder="x m">
-            <input type="number" id="yO" placeholder="y m"><br><br>
+                <span>Observer Position: </span>
+                <input type="number" id="xO" step="any" placeholder="x m" required>
+                <input type="number" id="yO" step="any" placeholder="y m" required><br><br>
 
-            <span>Observer Velocity: </span>
-            <input type="number" id="vxO" placeholder="x m/s">
-            <input type="number" id="vyO" placeholder="y m/s"><br><br>
+                <span>Observer Velocity: </span>
+                <input type="number" id="vxO" step="any" placeholder="x m/s" required>
+                <input type="number" id="vyO" step="any" placeholder="y m/s" required><br><br>
 
-            <span>Zoom Factor: </span>
-            <input type="number" class="wide" id="zoom" min="1" step="1" placeholder="1"><br><br>
-            <button onclick="reset()">Reset Simulation</button>
+                <span>Speed of Sound: </span>
+                <input type="number" class="wide" id="vM" min="1" step="any" placeholder="m/s" value="340.3"
+                    required><br><br>
+
+                <span>Zoom Factor: </span>
+                <input type="number" class="wide" id="zoom" min="1" step="1" placeholder="1" value="1" required><br><br>
+                <input type="submit" onsubmit="alert('wheee')" value="Reset Simulation" class="wide">
+            </form>
         </div>
         <div class="box">
             <h3>Observer Statistics</h3>
-            Sound Frequency: <span id="fDoppler">550 Hz</span><br><br>
-            Sound Intensity: <span id="intensity">0 W/m^2</span><br><br>
-            Sound Decibels: <span id="dB">97 dB</span><br><br>
-            Source Velocity (Relative): <br>
+            Sound Frequency: <span id="fDoppler">550</span> Hz<br><br>
+            Sound Intensity: <span id="intensity">23</span> W/m^2<br><br>
+            Sound Decibels: <span id="dB">97</span> dB<br><br>
+            Source Velocity (Relative): <span id="vRel">30</span> m/s<br><br>
+            
+            <!--<br>
             <div style="text-align: center;">
-                x: <span id="vxRel">1 m/s</span> &nbsp;
-                y: <span id="vyRel">-3 m/s</span>
-            </div><br>
+                x: <span id="vxRel">1</span> m/s&nbsp;
+                y: <span id="vyRel">-3</span> m/s
+            </div><br>-->
 
-            Distance to Source: <span id="dist">15 m</span>
+            Distance to Source: <span id="dist">15</span> m
         </div>
     </div>
-    <!--<button onclick="draw()">STEP</button>-->
+    <!--<button onclick="validateParams()">STEP</button>-->
 </body>
 
 </html>

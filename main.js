@@ -1,5 +1,5 @@
 /*jshint esversion: 6 */
-var canvas, ctx, audioCtx, oscillator, gainNode, prevT, prevD;
+var canvas, ctx, audioCtx, oscillator, gainNode, prevT, prevD, paramsForm;
 
 window.onload = () => {
     canvas = document.getElementById('mainCanvas'); // initialize canvas
@@ -12,14 +12,14 @@ window.onload = () => {
     gainNode.connect(audioCtx.destination);
     gainNode.gain.value = 0;
 
-    // initialize derivative variables
-    prevT = performance.now();
-    prevD = source.distanceTo(observer);
+    document.getElementById("paramsForm").addEventListener('submit', submitParams, false);
 
     oscillator.start(0);
+    resetSim();
 
     if (!step) window.requestAnimationFrame(draw);
 };
+
 
 class Point {
     constructor(x, y) {
@@ -39,13 +39,22 @@ class Point {
         this.x += p.x;
         this.y += p.y;
     }
+
+    multiply(k) {
+        return new Point(k * this.x, k * this.y);
+    }
 }
 
 class Circle extends Point {
-    constructor(x, y, r, color) {
+    constructor(x, y, vX, vY, r, color) {
         super(x, y);
+        this.v = new Point(vX, vY);
         this.r = r;
         this.color = color;
+    }
+
+    move(dT) {
+        this.add(this.v.multiply(dT));
     }
 
     draw() {
@@ -61,13 +70,14 @@ class Circle extends Point {
 
 var step = false;
 var freqS = 270;
+var vM = 340;
 
-var observer = new Circle(0, 0, 2, "blue");
-var source = new Circle(-200, 20, 2, "red");
+var observer = new Circle(0, 0, 70, 0, 2, "blue");
+var source = new Circle(-200, 20, 0, 0, 2, "red");
 
-var soundP = 600;
+var powerS = 600;
 const i0 = Math.pow(10, -12);
-const maxDecibels = 10 * Math.log10(intensity(soundP, source.y) / i0);
+var maxDecibels = 10 * Math.log10(intensity(powerS, source.y) / i0);
 const dTsamples = 10; // smooting factor for timestep
 var zoom = 6; // zoom factor around origin (zoom=2, 1m = 2px)
 
@@ -75,6 +85,40 @@ var arrDT = [];
 
 console.log("max dB: " + maxDecibels);
 console.log(observer);
+
+function submitParams(event) {
+    event.preventDefault();
+    resetSim();
+}
+
+function resetSim() {
+    prevT = performance.now();
+
+    freqS = parseInt(document.getElementById("freqS").value);
+    powerS = parseInt(document.getElementById("powerS").value);
+
+    source = new Circle(
+        parseInt(document.getElementById("xS").value),
+        parseInt(document.getElementById("yS").value),
+        parseInt(document.getElementById("vxS").value),
+        parseInt(document.getElementById("vyS").value),
+        2, "red");
+
+    observer = new Circle(
+        parseInt(document.getElementById("xO").value),
+        parseInt(document.getElementById("yO").value),
+        parseInt(document.getElementById("vxO").value),
+        parseInt(document.getElementById("vyO").value),
+        2, "blue");
+
+    vM = parseInt(document.getElementById("vM").value);
+
+    zoom = parseInt(document.getElementById("zoom").value);
+
+    maxDecibels = 10 * Math.log10(intensity(powerS, source.y) / i0); // incorrect, compute intersection of lines
+
+    prevD = source.distanceTo(observer);
+}
 
 
 function draw() {
@@ -92,27 +136,28 @@ function draw() {
     var dD = prevD - source.distanceTo(observer); // delta displacement
     var vRel = dD / avgDT; // calculating relative velocity
 
-    //console.log("dist: " + source.distanceTo(observer));
-    // console.log("dD: " + dD);
-    // console.log("vRel: " + (dD / dT));
-
     console.log("fps: " + Math.floor(1 / avgDT));
     prevD = source.distanceTo(observer);
 
-    var sourceI = intensity(soundP, prevD);
+    var sourceI = intensity(powerS, prevD);
     var dB = 10 * Math.log10(sourceI / i0);
     var gain = dB / maxDecibels; //Math.pow(i, 4)//Math.exp(i)/Math.E;
 
-    // console.log("intensity: " + sourceI);
-    // console.log("dB: " + dB);
-    // console.log("gain: " + gain);
+    var fDoppler = doppler(freqS, 340, vRel);
+    updateSound(fDoppler, gain);
 
-    updateSound(doppler(freqS, 340, vRel), gain);
+    setStat("dist", source.distanceTo(observer));
+    setStat("vRel", vRel);
+    setStat("intensity", sourceI);
+    setStat("dB", dB);
+    setStat("fDoppler", fDoppler);
 
     observer.draw();
     source.draw();
 
-    source.add(new Point(70 * avgDT, 0)); // moving sound source
+    observer.move(avgDT);
+    source.move(avgDT);
+
 
     if (!step) window.requestAnimationFrame(draw);
 }
@@ -120,7 +165,8 @@ function draw() {
 // params: f_source, v_medium (v_sound in medium), v_source (relative to observer)
 // returns: f_doppler
 function doppler(fS, vM, vRel) {
-    return (vM * fS) / (vM - vRel);
+    var result = (vM * fS) / (vM - vRel);
+    return isNaN(result) ? 0 : result;
 }
 
 // calculates intensity of sound in W*m^-2
@@ -149,7 +195,12 @@ observer.
 */
 
 function setAbsoluteGain(gain) {
+    if (isNaN(gain)) return;
     gainNode.gain.value = Math.pow(gain, 7);
+}
+
+function setStat(id, value) {
+    document.getElementById(id).innerHTML = value.toFixed(2);
 }
 
 
