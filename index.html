@@ -33,55 +33,62 @@
     <div style="text-align: center">
         <h1>Doppler Effect Simulator!</h1>
     </div>
-    <canvas style="float:left; margin: 10px;" id="mainCanvas" width="1000" height="600"></canvas>
-    <div style="float:left;" height="600">
+    <div style="width: auto;">
         <div class="box">
-            <form id="paramsForm" onsumbit="alert('whee'); return false">
-                <span>Source Frequency: </span>
-                <input type="number" class="wide" id="freqS" min="1" placeholder="Hz" required><br><br>
-
-                <span>Source Power: </span>
-                <input type="number" class="wide" id="powerS" min="1" placeholder="W" required><br><br>
-
-                <span>Source Position: </span>
-                <input type="number" id="xS" step="any" placeholder="x m" required>
-                <input type="number" id="yS" step="any" placeholder="y m" required><br><br>
-
-                <span>Source Velocity: </span>
-                <input type="number" id="vxS" step="any" placeholder="x m/s" required>
-                <input type="number" id="vyS" step="any" placeholder="y m/s" required><br><br>
-
-                <span>Observer Position: </span>
-                <input type="number" id="xO" step="any" placeholder="x m" required>
-                <input type="number" id="yO" step="any" placeholder="y m" required><br><br>
-
-                <span>Observer Velocity: </span>
-                <input type="number" id="vxO" step="any" placeholder="x m/s" required>
-                <input type="number" id="vyO" step="any" placeholder="y m/s" required><br><br>
-
-                <span>Speed of Sound: </span>
-                <input type="number" class="wide" id="vM" min="1" step="any" placeholder="m/s" value="340.3"
-                    required><br><br>
-
-                <span>Zoom Factor: </span>
-                <input type="number" class="wide" id="zoom" min="1" step="1" placeholder="1" value="1" required><br><br>
-                <input type="submit" onsubmit="alert('wheee')" value="Reset Simulation" class="wide">
-            </form>
+            FPS: <span id="fps">60</span> &nbsp;&nbsp;
+            Zoom Factor (<span id="zoomTxt">1</span>):
+            <input type="range" class="wide" id="zoom" min="1" max="10" step="1" placeholder="1" value="1">&nbsp;&nbsp;
+            Volume Emphasis: 
+            <input type="range" class="wide" id="volumeEmphasis" min="1" max="10" step="1" placeholder="1" value="6">&nbsp;&nbsp;
         </div>
-        <div class="box">
-            <h3>Observer Statistics</h3>
-            Sound Frequency: <span id="fDoppler">550</span> Hz<br><br>
-            Sound Intensity: <span id="intensity">23</span> W/m^2<br><br>
-            Sound Decibels: <span id="dB">97</span> dB<br><br>
-            Source Velocity (Relative): <span id="vRel">30</span> m/s<br><br>
-            
-            <!--<br>
+        <canvas style="float:left; margin: 10px; border-width: 1px;" id="mainCanvas" width="800" height="600"></canvas>
+        <div style="float:left;" height="600">
+            <div class="box">
+                <form id="paramsForm">
+                    <span>Source Frequency: </span>
+                    <input type="number" class="wide" id="freqS" min="1" placeholder="Hz" required><br><br>
+
+                    <span>Source Power: </span>
+                    <input type="number" class="wide" id="powerS" min="1" placeholder="W" required><br><br>
+
+                    <span>Source Position: </span>
+                    <input type="number" id="xS" step="any" placeholder="x m" required>
+                    <input type="number" id="yS" step="any" placeholder="y m" required><br><br>
+
+                    <span>Source Velocity: </span>
+                    <input type="number" id="vxS" step="any" placeholder="x m/s" required>
+                    <input type="number" id="vyS" step="any" placeholder="y m/s" required><br><br>
+
+                    <span>Observer Position: </span>
+                    <input type="number" id="xO" step="any" placeholder="x m" required>
+                    <input type="number" id="yO" step="any" placeholder="y m" required><br><br>
+
+                    <span>Observer Velocity: </span>
+                    <input type="number" id="vxO" step="any" placeholder="x m/s" required>
+                    <input type="number" id="vyO" step="any" placeholder="y m/s" required><br><br>
+
+                    <span>Speed of Sound: </span>
+                    <input type="number" class="wide" id="vM" min="1" step="any" placeholder="m/s" value="340.3"
+                        required><br><br>
+
+                    <input type="submit" value="Reset Simulation" class="wide">
+                </form>
+            </div>
+            <div class="box">
+                <h3>Observer Statistics</h3>
+                Sound Frequency: <span id="fDoppler">550</span> Hz<br><br>
+                Sound Intensity: <span id="intensity">23</span> W/m^2<br><br>
+                Sound Decibels: <span id="dB">97</span> dB<br><br>
+                Source Velocity (Relative): <span id="vRel">30</span> m/s<br><br>
+
+                <!--<br>
             <div style="text-align: center;">
                 x: <span id="vxRel">1</span> m/s&nbsp;
                 y: <span id="vyRel">-3</span> m/s
             </div><br>-->
 
-            Distance to Source: <span id="dist">15</span> m
+                Distance to Source: <span id="dist">15</span> m
+            </div>
         </div>
     </div>
     <!--<button onclick="validateParams()">STEP</button>-->

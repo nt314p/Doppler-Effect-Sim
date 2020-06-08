@@ -13,9 +13,11 @@ window.onload = () => {
     gainNode.gain.value = 0;
 
     document.getElementById("paramsForm").addEventListener('submit', submitParams, false);
+    document.getElementById("zoom").addEventListener('input', updateZoom, false);
+    document.getElementById("volumeEmphasis").addEventListener('input', updateVolumeEmphasis, false);
 
-    oscillator.start(0);
     resetSim();
+    oscillator.start(0);
 
     if (!step) window.requestAnimationFrame(draw);
 };
@@ -48,43 +50,38 @@ class Point {
 class Circle extends Point {
     constructor(x, y, vX, vY, r, color) {
         super(x, y);
+        this.p = new Point(this.x, this.y);
         this.v = new Point(vX, vY);
         this.r = r;
         this.color = color;
     }
 
-    move(dT) {
-        this.add(this.v.multiply(dT));
+    move(t) {
+        this.p.x = this.x + this.v.x * t;
+        this.p.y = this.y + this.v.y * t;
     }
 
     draw() {
         ctx.beginPath();
         ctx.fillStyle = this.color;
         ctx.arc(
-            zoom * (this.x) + canvas.width / 2,
-            canvas.height / 2 - zoom * this.y,
+            zoom * (this.p.x) + canvas.width / 2,
+            canvas.height / 2 - zoom * this.p.y,
             zoom * this.r, 0, 2 * Math.PI);
         ctx.fill();
     }
 }
 
 var step = false;
-var freqS = 270;
-var vM = 340;
+var time = 0;
 
-var observer = new Circle(0, 0, 70, 0, 2, "blue");
-var source = new Circle(-200, 20, 0, 0, 2, "red");
+var freqS, vM, maxDecibels, observer, source, powerS, zoom, time0, vRel, volumeEmphasis;
 
-var powerS = 600;
 const i0 = Math.pow(10, -12);
-var maxDecibels = 10 * Math.log10(intensity(powerS, source.y) / i0);
-const dTsamples = 10; // smooting factor for timestep
-var zoom = 6; // zoom factor around origin (zoom=2, 1m = 2px)
-
+const dTsamples = 30; // smooting factor for timestep
 var arrDT = [];
-
-console.log("max dB: " + maxDecibels);
-console.log(observer);
+zoom = 1;
+volumeEmphasis = 6;
 
 function submitParams(event) {
     event.preventDefault();
@@ -93,6 +90,7 @@ function submitParams(event) {
 
 function resetSim() {
     prevT = performance.now();
+    time0 = performance.now();
 
     freqS = parseInt(document.getElementById("freqS").value);
     powerS = parseInt(document.getElementById("powerS").value);
@@ -112,11 +110,7 @@ function resetSim() {
         2, "blue");
 
     vM = parseInt(document.getElementById("vM").value);
-
-    zoom = parseInt(document.getElementById("zoom").value);
-
-    maxDecibels = 10 * Math.log10(intensity(powerS, source.y) / i0); // incorrect, compute intersection of lines
-
+    maxDecibels = maximumDecibels();
     prevD = source.distanceTo(observer);
 }
 
@@ -124,6 +118,8 @@ function resetSim() {
 function draw() {
     ctx.fillStyle = "white";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
+    time = performance.now() - time0;
+    time /= 1000; // convert to seconds
 
     var currT = performance.now(); // delta time
     var dT = (currT - prevT) / 1000;
@@ -133,31 +129,29 @@ function draw() {
     if (arrDT.length > dTsamples) arrDT.pop(); // maintain a maximum of 10 samples in dT array
     var avgDT = arrDT.reduce((total, d) => total + d, 0) / arrDT.length; // calculate average dT
 
-    var dD = prevD - source.distanceTo(observer); // delta displacement
-    var vRel = dD / avgDT; // calculating relative velocity
+    vRel = relativeVelocity(time);
 
-    console.log("fps: " + Math.floor(1 / avgDT));
-    prevD = source.distanceTo(observer);
+    // console.log("fps: " + Math.floor(1 / avgDT));
 
-    var sourceI = intensity(powerS, prevD);
-    var dB = 10 * Math.log10(sourceI / i0);
+    var sourceI = intensity(powerS, distance(time));
+    var dB = intensityToDecibels(sourceI);
     var gain = dB / maxDecibels; //Math.pow(i, 4)//Math.exp(i)/Math.E;
 
     var fDoppler = doppler(freqS, 340, vRel);
     updateSound(fDoppler, gain);
 
-    setStat("dist", source.distanceTo(observer));
+    setStat("dist", distance(time));
     setStat("vRel", vRel);
     setStat("intensity", sourceI);
     setStat("dB", dB);
     setStat("fDoppler", fDoppler);
+    setStat("fps", 1 / avgDT);
 
     observer.draw();
     source.draw();
 
-    observer.move(avgDT);
-    source.move(avgDT);
-
+    observer.move(time);
+    source.move(time);
 
     if (!step) window.requestAnimationFrame(draw);
 }
@@ -174,9 +168,40 @@ function intensity(soundP, dist) {
     return soundP / (4 * Math.PI * dist * dist);
 }
 
+function intensityToDecibels(intensity) {
+    return 10 * Math.log10(intensity / i0);
+}
+
+function distance(t) { // returns distance at certain time
+    return Math.sqrt(Math.pow(dPX() + dVX() * t, 2) + Math.pow(dPY() + dVY() * t, 2));
+}
+
+function relativeVelocity(t) {
+    // relative velocity is just the derivative of distance
+    var top = ((dVX() * dVX() + dVY() * dVY()) * t + dotP());
+    var bottom = distance(t);
+    return -top / bottom;
+}
+
+function maximumDecibels() {
+    // minT found by solving for d'(t) = 0 to find minimum distance
+    var minT = dotP() / (dVX() * dVX() + dVY() * dVY());
+    var minDist = Math.max(0.5, distance(minT)); // avoid minDist = 0
+    return intensityToDecibels(intensity(powerS, minDist));
+}
+
 function updateSound(frequency, gain) {
     oscillator.frequency.value = frequency;
     setAbsoluteGain(gain);
+}
+
+function updateZoom() {
+    zoom = document.getElementById("zoom").value;
+    document.getElementById("zoomTxt").innerHTML = zoom;
+}
+
+function updateVolumeEmphasis() {
+    volumeEmphasis = document.getElementById("volumeEmphasis").value;
 }
 
 /*
@@ -194,13 +219,31 @@ accentuate the change in volume when the sound source is near to the
 observer.
 */
 
-function setAbsoluteGain(gain) {
-    if (isNaN(gain)) return;
-    gainNode.gain.value = Math.pow(gain, 7);
-}
-
 function setStat(id, value) {
     document.getElementById(id).innerHTML = value.toFixed(2);
 }
 
+function setAbsoluteGain(gain) {
+    if (isNaN(gain)) return;
+    gainNode.gain.value = Math.pow(gain, volumeEmphasis);
+}
 
+function dotP() {
+    return dPX() * dVX() + dPY() * dVY();
+}
+
+function dPX() { // delta position x
+    return source.x - observer.x;
+}
+
+function dPY() { // delta position y
+    return source.y - observer.y;
+}
+
+function dVX() { // delta velocity x
+    return source.v.x - observer.v.x;
+}
+
+function dVY() { // delta velocity y
+    return source.v.y - observer.v.y;
+}
