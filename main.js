@@ -1,5 +1,10 @@
 /*jshint esversion: 6 */
-var canvas, ctx, audioCtx, oscillator, gainNode, prevT, prevD, paramsForm;
+var canvas, ctx, audioCtx, oscillator, gainNode, prevT, paramsForm;
+
+const i0 = Math.pow(10, -12);
+const DELTA_TIME_SAMPLES = 20; // smooting factor for framerate
+const WAVE_MULTIPLIER_CONVERSION = [1, 2, 4, 10, 20, 40, 100, 200, 400, 1000];
+const MAX_ALLOC_WAVES = 100000; // hundred thousand waves
 
 window.onload = () => {
     canvas = document.getElementById('mainCanvas'); // initialize canvas
@@ -12,14 +17,19 @@ window.onload = () => {
     gainNode.connect(audioCtx.destination);
     gainNode.gain.value = 0;
 
-    document.getElementById("paramsForm").addEventListener('submit', submitParams, false);
-    document.getElementById("zoom").addEventListener('input', updateZoom, false);
-    document.getElementById("volumeEmphasis").addEventListener('input', updateVolumeEmphasis, false);
+    // initialize option inputs
+    initializeEvent("paramsForm", "submit", submitParams);
+    initializeEvent("zoom", "input", updateZoom);
+    initializeEvent("volumeEmphasis", "input", updateVolumeEmphasis);
+    initializeEvent("waveMultiplier", "input", updateWaveMultiplier);
+    initializeEvent("cameraMode", "input", updateCameraMode);
+    initializeEvent("toggleTimeBtn", "click", toggleTime);
+    initializeEvent("setTimeBtn", "click", setCustTime);
+    initializeEvent("stepTimeBtn", "click", stepTime);
 
     resetSim();
     oscillator.start(0);
-
-    if (!step) window.requestAnimationFrame(draw);
+    window.requestAnimationFrame(draw);
 };
 
 
@@ -33,17 +43,12 @@ class Point {
         return Math.sqrt(Math.pow(this.x - p.x, 2) + Math.pow(this.y - p.y, 2));
     }
 
-    magnitude() {
-        return this.distanceTo(new Point(0, 0));
-    }
-
-    add(p) {
-        this.x += p.x;
-        this.y += p.y;
-    }
-
-    multiply(k) {
-        return new Point(k * this.x, k * this.y);
+    transform() { // transforms point based on canvas, zoom, and global offset
+        return new Point(
+            zoom * (this.x - globalOffset.x) + canvas.width / 2,
+            canvas.height / 2 - zoom * (this.y - globalOffset.y
+            )
+        );
     }
 }
 
@@ -65,87 +70,122 @@ class Circle extends Point {
         ctx.beginPath();
         ctx.fillStyle = this.color;
         ctx.arc(
-            zoom * (this.p.x) + canvas.width / 2,
-            canvas.height / 2 - zoom * this.p.y,
+            this.p.transform().x,
+            this.p.transform().y,
             zoom * this.r, 0, 2 * Math.PI);
         ctx.fill();
     }
 }
 
-var step = false;
-var time = 0;
+class Wave extends Point {
+    constructor(n) {
+        super(0, 0);
+        this.n = n;
+        this.move(this.n);
+    }
 
-var freqS, vM, maxDecibels, observer, source, powerS, zoom, time0, vRel, volumeEmphasis;
+    move(n) {
+        this.x = source.x + source.v.x * this.getTimeShift(n);
+        this.y = source.y + source.v.y * this.getTimeShift(n);
+    }
 
-const i0 = Math.pow(10, -12);
-const dTsamples = 30; // smooting factor for timestep
-var arrDT = [];
+    getTimeShift(n) {
+        return n * (1 / freqS) * (1 / waveMultiplier);
+    }
+
+    draw(t) {
+        ctx.beginPath();
+        ctx.arc(
+            this.transform().x,
+            this.transform().y,
+            (t - this.getTimeShift(this.n)) * vM * zoom, 0, 2 * Math.PI);
+        ctx.stroke();
+    }
+
+    isAlive(t) { // should this wave exist given the current time
+        return this.getTimeShift(this.n) <= t;
+    }
+}
+
+var freqS, vM, maxDecibels, observer, source, powerS, zoom, time0, time, vRel, volumeEmphasis, waveMultiplier;
+var step = false; // is the simulation running, or in step mode (paused)
+var arrDT = []; // array for fps calculation
+var waves = [];
+var globalOffset = new Point(0, 0); // global offset enables changing camera mode
 zoom = 1;
 volumeEmphasis = 6;
-
-function submitParams(event) {
-    event.preventDefault();
-    resetSim();
-}
+waveMultiplier = 1; // by what factor to reduce waves by (1 is full frequency)
 
 function resetSim() {
     prevT = performance.now();
     time0 = performance.now();
+    time = 0;
 
-    freqS = parseInt(document.getElementById("freqS").value);
-    powerS = parseInt(document.getElementById("powerS").value);
+    freqS = getValue("freqS");
+    powerS = getValue("powerS");
 
     source = new Circle(
-        parseInt(document.getElementById("xS").value),
-        parseInt(document.getElementById("yS").value),
-        parseInt(document.getElementById("vxS").value),
-        parseInt(document.getElementById("vyS").value),
+        getValue("xS"),
+        getValue("yS"),
+        getValue("vxS"),
+        getValue("vyS"),
         2, "red");
 
     observer = new Circle(
-        parseInt(document.getElementById("xO").value),
-        parseInt(document.getElementById("yO").value),
-        parseInt(document.getElementById("vxO").value),
-        parseInt(document.getElementById("vyO").value),
+        getValue("xO"),
+        getValue("yO"),
+        getValue("vxO"),
+        getValue("vyO"),
         2, "blue");
 
-    vM = parseInt(document.getElementById("vM").value);
+    vM = getValue("vM");
     maxDecibels = maximumDecibels();
     prevD = source.distanceTo(observer);
+
+    updateVolumeEmphasis();
+    updateWaveMultiplier();
+    updateCameraMode();
+
+    waves = [];
+    for (var i = 0; i < MAX_ALLOC_WAVES; ++i) { // populate array with Wave objects
+        waves.push(new Wave(i));
+    }
 }
 
 
 function draw() {
     ctx.fillStyle = "white";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    time = performance.now() - time0;
-    time /= 1000; // convert to seconds
+    ctx.fillRect(0, 0, canvas.width, canvas.height); // clear canvas
 
-    var currT = performance.now(); // delta time
-    var dT = (currT - prevT) / 1000;
+    if (!step) { // only update time when running simulation
+        time = performance.now() - time0;
+        time /= 1000; // convert to seconds
+    }
+
+    let currT = performance.now(); // delta time for fps calculation
+    let dT = (currT - prevT) / 1000;
     prevT = currT;
 
     arrDT.unshift(dT); // add current dT to front of array
-    if (arrDT.length > dTsamples) arrDT.pop(); // maintain a maximum of 10 samples in dT array
+    if (arrDT.length > DELTA_TIME_SAMPLES) arrDT.pop(); // maintain a maximum of desired samples in dT array
     var avgDT = arrDT.reduce((total, d) => total + d, 0) / arrDT.length; // calculate average dT
 
     vRel = relativeVelocity(time);
 
-    // console.log("fps: " + Math.floor(1 / avgDT));
+    let sourceI = intensity(powerS, distance(time));
+    let dB = intensityToDecibels(sourceI);
+    let gain = dB / maxDecibels; // gain is calculated as a ratio of dB values
 
-    var sourceI = intensity(powerS, distance(time));
-    var dB = intensityToDecibels(sourceI);
-    var gain = dB / maxDecibels; //Math.pow(i, 4)//Math.exp(i)/Math.E;
-
-    var fDoppler = doppler(freqS, 340, vRel);
+    let fDoppler = doppler(freqS, vM, vRel);
     updateSound(fDoppler, gain);
 
-    setStat("dist", distance(time));
-    setStat("vRel", vRel);
-    setStat("intensity", sourceI);
-    setStat("dB", dB);
-    setStat("fDoppler", fDoppler);
-    setStat("fps", 1 / avgDT);
+    for (var i = 0; i < waves.length; ++i) {
+        if (waves[i].isAlive(time)) {
+            waves[i].draw(time);
+        } else {
+            break;
+        }
+    }
 
     observer.draw();
     source.draw();
@@ -153,13 +193,21 @@ function draw() {
     observer.move(time);
     source.move(time);
 
-    if (!step) window.requestAnimationFrame(draw);
+    setValue("dist", distance(time)); // set statistic readouts
+    setValue("vRel", vRel);
+    setValue("intensity", sourceI);
+    setValue("dB", dB);
+    setValue("fDoppler", fDoppler);
+    setValue("fps", 1 / avgDT, 0, false);
+    setValue("time", time);
+
+    window.requestAnimationFrame(draw);
 }
 
 // params: f_source, v_medium (v_sound in medium), v_source (relative to observer)
 // returns: f_doppler
 function doppler(fS, vM, vRel) {
-    var result = (vM * fS) / (vM - vRel);
+    let result = (vM * fS) / (vM - vRel);
     return isNaN(result) ? 0 : result;
 }
 
@@ -178,16 +226,21 @@ function distance(t) { // returns distance at certain time
 
 function relativeVelocity(t) {
     // relative velocity is just the derivative of distance
-    var top = ((dVX() * dVX() + dVY() * dVY()) * t + dotP());
-    var bottom = distance(t);
-    return -top / bottom;
+    let top = ((dVX() * dVX() + dVY() * dVY()) * t + dotP());
+    let bottom = distance(t);
+    return bottom == 0 ? 0 : -top / bottom;
 }
 
 function maximumDecibels() {
     // minT found by solving for d'(t) = 0 to find minimum distance
-    var minT = dotP() / (dVX() * dVX() + dVY() * dVY());
-    var minDist = Math.max(0.5, distance(minT)); // avoid minDist = 0
+    let minT = dotP() / (dVX() * dVX() + dVY() * dVY());
+    let minDist = Math.max(0.1, distance(minT)); // avoid minDist = 0
     return intensityToDecibels(intensity(powerS, minDist));
+}
+
+function submitParams(event) {
+    event.preventDefault(); // stop page from refreshing
+    resetSim();
 }
 
 function updateSound(frequency, gain) {
@@ -196,12 +249,63 @@ function updateSound(frequency, gain) {
 }
 
 function updateZoom() {
-    zoom = document.getElementById("zoom").value;
+    zoom = getValue("zoom");
     document.getElementById("zoomTxt").innerHTML = zoom;
 }
 
 function updateVolumeEmphasis() {
-    volumeEmphasis = document.getElementById("volumeEmphasis").value;
+    volumeEmphasis = getValue("volumeEmphasis");
+}
+
+function updateWaveMultiplier() {
+    let denominator = WAVE_MULTIPLIER_CONVERSION[getValue("waveMultiplier")];
+    waveMultiplier = 1 / denominator;
+    document.getElementById("waveMultTxt").innerHTML = denominator == 1 ? 1 : "1/" + denominator;
+    waves.forEach(w => w.move(w.n));
+}
+
+function updateCameraMode() {
+    let offsetArr = [{ p: new Point(0, 0) }, source, observer];
+    globalOffset = offsetArr[document.getElementById("cameraMode").value].p;
+}
+
+function toggleTime() {
+    let button = document.getElementById("toggleTimeBtn");
+    step = button.value === "⏸"; // currently paused
+    if (!step) setTime(time);
+    button.value = (button.value === "⏸") ? "⏵︎" : "⏸";
+}
+
+function setCustTime() {
+    setTime(getValue("setTime"));
+}
+
+function stepTime() {
+    setTime(time + getValue("stepTime"));
+}
+
+function setTime(newTime) {
+    if (isNaN(newTime)) return;
+    if (step)
+        time = newTime;
+    else
+        time0 = performance.now() - newTime * 1000;
+}
+
+function initializeEvent(id, type, func) {
+    document.getElementById(id).addEventListener(type, func, false);
+}
+
+function setValue(id, value, decimals, tooltip) {
+    if (typeof decimals === "undefined") decimals = 3; // default
+    // third parameter also determines whether the tooltip will be updated
+    if ("undefinedboolean".indexOf(typeof tooltip) != -1 || tooltip === true)
+        document.getElementById(id).title = value;
+    document.getElementById(id).innerHTML = value.toFixed(decimals);
+}
+
+function getValue(id) {
+    return parseFloat(document.getElementById(id).value);
 }
 
 /*
@@ -218,10 +322,6 @@ accomplish accurately, so the model uses a high exponent in order to
 accentuate the change in volume when the sound source is near to the 
 observer.
 */
-
-function setStat(id, value) {
-    document.getElementById(id).innerHTML = value.toFixed(2);
-}
 
 function setAbsoluteGain(gain) {
     if (isNaN(gain)) return;
